@@ -41,7 +41,6 @@ interface ContentDetails {
   siteId: number;
   date: Date;
 }
-
 const ContentScheduler = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -84,6 +83,19 @@ const ContentScheduler = () => {
   } | null>(null);
 
   const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const isToday = (date: Date | null) => {
+    if (!date) return false;
+    const today = new Date();
+    return date.getDate() === today.getDate() &&
+           date.getMonth() === today.getMonth() &&
+           date.getFullYear() === today.getFullYear();
+  };
+
+  const hasContent = (date: Date | null, site: any) => {
+    if (!date) return false;
+    const contentId = generateContentId(site, date);
+    return contentId && contentDetails[contentId];
+  };
 
   const generateContentId = (site, date) => {
     const dayOfWeek = date.getDay();
@@ -113,6 +125,25 @@ const ContentScheduler = () => {
 
   const navigateMonth = (direction: number) => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + direction, 1));
+  };
+
+  const getStatusColor = (contentId) => {
+    const status = contentDetails[contentId]?.status || 'pending';
+    return `${STATUS_STYLES[status].bg} ${STATUS_STYLES[status].text} 
+            hover:scale-105 transform transition-all duration-200 hover:shadow-lg`;
+  };
+
+const handleDateClick = (date: Date) => {
+    const targetSite = selectedSiteId === 'all' 
+      ? sites[0] 
+      : sites.find(site => site.id.toString() === selectedSiteId);
+    
+    if (targetSite) {
+      const contentId = generateContentId(targetSite, date);
+      if (contentId) {
+        handleContentClick(contentId, date, targetSite);
+      }
+    }
   };
 
   const handleContentClick = (contentId: string, date: Date, site: any) => {
@@ -179,12 +210,7 @@ const ContentScheduler = () => {
     }
   };
 
-  const getStatusColor = (contentId) => {
-    const status = contentDetails[contentId]?.status || 'pending';
-    return `${STATUS_STYLES[status].bg} ${STATUS_STYLES[status].text}`;
-  };
-
-  return (
+return (
     <div className="w-full max-w-4xl mx-auto">
       <div className="bg-white shadow rounded-lg p-4">
         <div className="flex items-center justify-between mb-4">
@@ -214,8 +240,8 @@ const ContentScheduler = () => {
             </Button>
           </div>
         </div>
-        
-        <div className="grid grid-cols-7 gap-1">
+
+<div className="grid grid-cols-7 gap-1">
           {weekdays.map(day => (
             <div key={day} className="p-2 text-center font-medium bg-gray-50">
               {day}
@@ -225,11 +251,26 @@ const ContentScheduler = () => {
           {getDaysInMonth().map((date, index) => (
             <div 
               key={index}
-              className="p-2 min-h-[100px] border bg-white"
+              onClick={() => date && handleDateClick(date)}
+              className={`p-2 min-h-[100px] border bg-white transition-all duration-200 group
+                ${date ? 'cursor-pointer hover:bg-gray-50 active:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50' : 'bg-gray-100'}
+                ${isToday(date) ? 'ring-2 ring-blue-500 ring-opacity-50' : ''}
+                ${hasContent(date, sites[0]) ? 'hover:bg-blue-50' : 'hover:bg-gray-50'}`}
             >
               {date && (
                 <>
-                  <div className="text-gray-500">{date.getDate()}</div>
+                  <div className="flex justify-between items-center">
+                    <div className={`text-gray-500 ${isToday(date) ? 'font-bold' : ''}`}>
+                      {date.getDate()}
+                    </div>
+                    {!sites
+                      .filter(site => selectedSiteId === 'all' || site.id.toString() === selectedSiteId)
+                      .some(site => hasContent(date, site)) && (
+                      <div className="text-xs text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        Click to add
+                      </div>
+                    )}
+                  </div>
                   {sites
                     .filter(site => selectedSiteId === 'all' || site.id.toString() === selectedSiteId)
                     .map(site => {
@@ -239,8 +280,11 @@ const ContentScheduler = () => {
                       return (
                         <div
                           key={`${site.id}-${date}`}
-                          onClick={() => handleContentClick(contentId, date, site)}
-                          className={`mt-1 p-2 rounded text-sm cursor-pointer transition-all duration-200 hover:shadow-md ${getStatusColor(contentId)}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleContentClick(contentId, date, site);
+                          }}
+                          className={`mt-1 p-2 rounded text-sm cursor-pointer ${getStatusColor(contentId)}`}
                         >
                           <div className="font-medium">{contentId}</div>
                           <div className="text-xs">{site.name}</div>
@@ -257,7 +301,7 @@ const ContentScheduler = () => {
         </div>
       </div>
 
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+<Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Update Content Details</DialogTitle>
@@ -307,7 +351,7 @@ const ContentScheduler = () => {
                 </div>
               </div>
 
-              <div className="grid gap-2">
+<div className="grid gap-2">
                 <Label htmlFor="title">Title</Label>
                 <Input
                   id="title"
