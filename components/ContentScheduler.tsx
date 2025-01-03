@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 
 const STATUS_STYLES = {
   pending: {
@@ -35,24 +36,50 @@ const STATUS_STYLES = {
 interface ContentDetails {
   title: string;
   description?: string;
+  notes?: string;
   status: keyof typeof STATUS_STYLES;
+  siteId: number;
+  date: Date;
 }
 
 const ContentScheduler = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [recalculateSequence, setRecalculateSequence] = useState(false);
   const [sites, setSites] = useState([
     { id: 1, name: 'Site 1', updateDays: [1, 3, 5], startId: 101 },
     { id: 2, name: 'Site 2', updateDays: [2, 4, 6], startId: 201 }
   ]);
   const [contentDetails, setContentDetails] = useState<Record<string, ContentDetails>>({
-    'C101': { title: 'First Update', description: 'Initial content update', status: 'in-progress' },
-    'C102': { title: 'Second Update', description: 'Follow-up content', status: 'pending' },
-    'C201': { title: 'Site 2 Update', description: 'Main site update', status: 'complete' }
+    'C101': { 
+      title: 'First Update', 
+      description: 'Initial content update', 
+      notes: '',
+      status: 'in-progress',
+      siteId: 1,
+      date: new Date()
+    },
+    'C102': { 
+      title: 'Second Update', 
+      description: 'Follow-up content', 
+      notes: '',
+      status: 'pending',
+      siteId: 1,
+      date: new Date()
+    },
+    'C201': { 
+      title: 'Site 2 Update', 
+      description: 'Main site update', 
+      notes: '',
+      status: 'complete',
+      siteId: 2,
+      date: new Date()
+    }
   });
   const [selectedSiteId, setSelectedSiteId] = useState('all');
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingContent, setEditingContent] = useState<{
     id: string;
+    originalId: string;
     details: ContentDetails;
   } | null>(null);
 
@@ -88,26 +115,65 @@ const ContentScheduler = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + direction, 1));
   };
 
-  const handleContentClick = (contentId: string, date: Date) => {
+  const handleContentClick = (contentId: string, date: Date, site: any) => {
     const currentDetails = contentDetails[contentId] || {
       title: '',
       description: '',
-      status: 'pending' as const
+      notes: '',
+      status: 'pending' as const,
+      siteId: site.id,
+      date: date
     };
     
     setEditingContent({
       id: contentId,
+      originalId: contentId,
       details: { ...currentDetails }
     });
     setIsModalOpen(true);
   };
 
+  const handleContentIdChange = (newId: string) => {
+    if (!editingContent) return;
+    
+    const oldId = editingContent.id;
+    if (recalculateSequence) {
+      // Recalculate all subsequent content IDs
+      const affectedSite = sites.find(site => site.id === editingContent.details.siteId);
+      if (!affectedSite) return;
+
+      const updatedDetails = { ...contentDetails };
+      const prefix = newId.charAt(0);
+      const newBaseNumber = parseInt(newId.slice(1));
+      
+      Object.keys(updatedDetails).forEach(key => {
+        if (key.startsWith(prefix) && parseInt(key.slice(1)) > parseInt(oldId.slice(1))) {
+          const diff = parseInt(key.slice(1)) - parseInt(oldId.slice(1));
+          const newKey = `${prefix}${newBaseNumber + diff}`;
+          updatedDetails[newKey] = updatedDetails[key];
+          delete updatedDetails[key];
+        }
+      });
+      
+      setContentDetails(updatedDetails);
+    }
+
+    setEditingContent(prev => prev ? {
+      ...prev,
+      id: newId
+    } : null);
+  };
+
   const handleSaveContent = () => {
     if (editingContent) {
-      setContentDetails(prev => ({
-        ...prev,
-        [editingContent.id]: editingContent.details
-      }));
+      const updatedDetails = { ...contentDetails };
+      
+      if (editingContent.id !== editingContent.originalId) {
+        delete updatedDetails[editingContent.originalId];
+      }
+      
+      updatedDetails[editingContent.id] = editingContent.details;
+      setContentDetails(updatedDetails);
       setIsModalOpen(false);
       setEditingContent(null);
     }
@@ -173,7 +239,7 @@ const ContentScheduler = () => {
                       return (
                         <div
                           key={`${site.id}-${date}`}
-                          onClick={() => handleContentClick(contentId, date)}
+                          onClick={() => handleContentClick(contentId, date, site)}
                           className={`mt-1 p-2 rounded text-sm cursor-pointer transition-all duration-200 hover:shadow-md ${getStatusColor(contentId)}`}
                         >
                           <div className="font-medium">{contentId}</div>
@@ -192,12 +258,55 @@ const ContentScheduler = () => {
       </div>
 
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Update Content Details</DialogTitle>
           </DialogHeader>
           {editingContent && (
             <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>Site</Label>
+                  <Input 
+                    value={sites.find(s => s.id === editingContent.details.siteId)?.name || ''}
+                    disabled
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Date</Label>
+                  <Input 
+                    value={editingContent.details.date?.toLocaleDateString() || ''}
+                    disabled
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="contentId">Content ID</Label>
+                <div className="flex gap-4 items-center">
+                  <Input
+                    id="contentId"
+                    value={editingContent.id}
+                    onChange={(e) => handleContentIdChange(e.target.value)}
+                    placeholder="Enter content ID"
+                  />
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={recalculateSequence}
+                        onCheckedChange={setRecalculateSequence}
+                      />
+                      <Label className="font-medium">Recalculate sequence</Label>
+                    </div>
+                    <span className="text-xs text-gray-500 pl-14">
+                      {recalculateSequence ? 
+                        "ON - Will update all following content numbers" : 
+                        "OFF - Will only change this content number"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
               <div className="grid gap-2">
                 <Label htmlFor="title">Title</Label>
                 <Input
@@ -210,6 +319,7 @@ const ContentScheduler = () => {
                   placeholder="Enter content title"
                 />
               </div>
+
               <div className="grid gap-2">
                 <Label htmlFor="description">Description</Label>
                 <Textarea
@@ -222,6 +332,20 @@ const ContentScheduler = () => {
                   placeholder="Enter content description"
                 />
               </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="notes">Additional Notes</Label>
+                <Textarea
+                  id="notes"
+                  value={editingContent.details.notes || ''}
+                  onChange={(e) => setEditingContent(prev => prev ? {
+                    ...prev,
+                    details: { ...prev.details, notes: e.target.value }
+                  } : null)}
+                  placeholder="Enter additional notes"
+                />
+              </div>
+
               <div className="grid gap-2">
                 <Label>Status</Label>
                 <RadioGroup
@@ -239,6 +363,7 @@ const ContentScheduler = () => {
                   ))}
                 </RadioGroup>
               </div>
+
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setIsModalOpen(false)}>
                   Cancel
